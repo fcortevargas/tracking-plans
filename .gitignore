@@ -1,5 +1,9 @@
-# custom
 tracking-plans
 tracking-plans/*
 
 .env
+
+__pycache__
+__pycache__/*
+
+.DS_Store
