@@ -19,11 +19,10 @@ class SyncService:
             found_database = self.notion_service.find_database_by_name(
                 tracking_plan_name
             )
-            if not found_database:
-                notion_db = self.notion_service.create_database(tracking_plan_name)
-                database_id = notion_db["id"]
-            else:
-                database_id = found_database["id"]
+            if found_database:
+                self.notion_service.archive_database(found_database["id"])
+            notion_db = self.notion_service.create_database(tracking_plan_name)
+            database_id = notion_db["id"]
 
             # Step 3: Get all events for this tracking plan
             events = self.rudderstack_service.get_all_tracking_plan_events(

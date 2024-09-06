@@ -45,6 +45,8 @@ class NotionService:
             search_url, headers=self.headers, data=json.dumps(payload)
         )
 
+        print(response.json())
+
         if response.status_code == 200:
             results = response.json().get("results", [])
             for result in results:
