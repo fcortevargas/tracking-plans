@@ -55,20 +55,26 @@ class SyncService:
         event_properties = self.rudderstack_service.get_all_properties()
 
         for prop in event_properties.get("data", []):
-            property_id = prop["id"]
             name = prop["name"]
             description = prop.get("description", "")
             prop_type = prop["type"]
 
             self.notion_service.add_property_to_event_properties_database(
                 database_id=database_id,
-                property_id=property_id,
                 name=name,
                 prop_type=prop_type,
                 description=description,
             )
 
     def sync_tracking_plans_to_notion(self):
+        # Step 0: Get the event properties database ID from the cache
+        event_properties_db_id = self.find_database_by_name_in_cache("Event Properties")
+
+        # Ensure the Event Properties database is available
+        if not event_properties_db_id:
+            print("Event Properties database not found.")
+            return
+
         # Step 1: Get all tracking plans from RudderStack
         tracking_plans = self.rudderstack_service.get_all_tracking_plans()
 
@@ -91,7 +97,8 @@ class SyncService:
 
             # Step 4: Create a new database and update the cache
             notion_db = self.notion_service.create_tracking_plan_database(
-                tracking_plan_name
+                tracking_plan_name,
+                event_properties_db_id,  # Pass the Event Properties database ID for relation
             )
             database_id = notion_db["id"]
 
@@ -114,7 +121,7 @@ class SyncService:
                     tracking_plan_id, event_id
                 )
 
-                # Step 7: Extract the properties you want to add to Notion
+                # Step 7: Extract the properties you want to relate to the Event Properties database
                 event_description = event.get("description", "No description available")
                 properties = (
                     event_details.get("rules", {})
@@ -127,13 +134,34 @@ class SyncService:
                     print(f"No properties found for event {event_name}")
                     continue
 
-                multiselect_options = [{"name": key} for key in properties.keys()]
-
-                if not multiselect_options:
-                    print(f"No properties to add for event {event_name}")
-                    continue  # Skip this event if there are no properties
-
-                # Step 8: Insert the event into the Notion database
-                self.notion_service.add_event_to_tracking_plan_database(
-                    database_id, event_name, event_description, multiselect_options
+                # Step 8: Find the corresponding property pages in the Event Properties database
+                property_page_ids = self.get_property_page_ids_from_cache(
+                    properties.keys()
                 )
+
+                if not property_page_ids:
+                    print(f"No matching properties found for event {event_name}")
+                    continue  # Skip if no matching properties are found
+
+                # Step 9: Insert the event into the Notion database with the relation to Event Properties
+                self.notion_service.add_event_to_tracking_plan_database(
+                    database_id, event_name, event_description, property_page_ids
+                )
+
+    def get_property_page_ids_from_cache(self, property_names: list) -> list:
+        """Fetch the corresponding page IDs for given property names from the cache."""
+        cache_file = "cache/properties.json"
+
+        # Load the cache
+        if os.path.exists(cache_file):
+            with open(cache_file, "r") as f:
+                cache = json.load(f)
+        else:
+            cache = {}
+
+        # Get the page IDs for the requested property names
+        matching_page_ids = [
+            cache.get(name) for name in property_names if name in cache
+        ]
+
+        return matching_page_ids

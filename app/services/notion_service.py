@@ -1,10 +1,11 @@
+import os
 import requests
 import json
 from app.config import settings
 
 
 class NotionService:
-    def __init__(self):
+    def __init__(self, cache_file="cache/properties.json"):
         self.api_key = settings.notion_api_token
         self.parent_page_id = settings.notion_parent_page_id
         self.headers = {
@@ -12,6 +13,18 @@ class NotionService:
             "Content-Type": "application/json",
             "Notion-Version": "2022-06-28",
         }
+        self.cache_file = cache_file
+        self.properties = self.load_cache()
+
+    def load_cache(self) -> dict:
+        if os.path.exists(self.cache_file):
+            with open(self.cache_file, "r") as f:
+                return json.load(f)
+        return {}
+
+    def save_cache(self) -> None:
+        with open(self.cache_file, "w") as f:
+            json.dump(self.properties, f, indent=4)
 
     def create_event_properties_database(self):
         """Create a Notion database to store event properties."""
@@ -46,8 +59,12 @@ class NotionService:
             print(f"Error: {response.status_code} - {response.text}")
             response.raise_for_status()
 
-    def create_tracking_plan_database(self, title: str) -> dict:
-        """Create a new tracking plan database with multi-select for properties."""
+    def create_tracking_plan_database(
+        self,
+        title: str,
+        event_properties_db_id: str,
+    ) -> dict:
+        """Create a new tracking plan database with a relation to the Event Properties database."""
         url = "https://api.notion.com/v1/databases"
         headers = self.headers
         payload = {
@@ -56,9 +73,11 @@ class NotionService:
             "properties": {
                 "Event Name": {"title": {}},
                 "Event Description": {"rich_text": {}},
-                "Properties": {
-                    "multi_select": {
-                        "options": []  # Add property options dynamically later
+                "Event Properties": {
+                    "relation": {
+                        "database_id": event_properties_db_id,
+                        "type": "single_property",
+                        "single_property": {},
                     }
                 },
             },
@@ -67,6 +86,7 @@ class NotionService:
         if response.status_code == 200:
             return response.json()
         else:
+            print(f"Error: {response.status_code} - {response.text}")
             response.raise_for_status()
 
     def archive_database(self, database_id: str) -> dict:
@@ -81,7 +101,6 @@ class NotionService:
     def add_property_to_event_properties_database(
         self,
         database_id: str,
-        property_id: str,
         name: str,
         description: str,
         prop_type: str,
@@ -105,7 +124,10 @@ class NotionService:
         response = requests.post(url, headers=headers, json=payload)
 
         if response.status_code == 200:
-            return response.json()
+            property_page = response.json()
+            self.properties[name] = property_page["id"]
+            self.save_cache()
+            return property_page
         else:
             print(f"Error: {response.status_code} - {response.text}")
             response.raise_for_status()
@@ -115,29 +137,40 @@ class NotionService:
         database_id: str,
         event_name: str,
         event_description: str,
-        multiselect_options: list,
+        related_property_page_ids: list,
     ) -> dict:
-        """Add an event to the Notion database with multi-select options."""
-        url = f"https://api.notion.com/v1/pages"
+        """Add an event to the Notion database with relations to Event Properties."""
+        url = "https://api.notion.com/v1/pages"
         headers = self.headers
-
-        if not event_description:
-            event_description = ""
 
         # Structure the payload for the Notion API
         payload = {
             "parent": {"database_id": database_id},
             "properties": {
                 "Event Name": {"title": [{"text": {"content": event_name}}]},
-                "Properties": {"multi_select": multiselect_options},
                 "Event Description": {
                     "rich_text": [{"text": {"content": event_description}}]
+                },
+                "Event Properties": {
+                    "relation": [
+                        {"id": page_id} for page_id in related_property_page_ids
+                    ]  # List of related property page IDs
                 },
             },
         }
 
         response = requests.post(url, headers=headers, json=payload)
 
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Error: {response.status_code} - {response.text}")
+            response.raise_for_status()
+
+    def get_database(self, database_id: str) -> dict:
+        """Get a Notion database by its ID."""
+        url = f"https://api.notion.com/v1/databases/{database_id}"
+        response = requests.get(url, headers=self.headers)
         if response.status_code == 200:
             return response.json()
         else:
