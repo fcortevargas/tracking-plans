@@ -42,3 +42,12 @@ class RudderStackService:
             return response.json()
         else:
             response.raise_for_status()
+
+    def get_all_properties(self) -> dict:
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        url = f"{self.base_url}/catalog/properties"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            response.raise_for_status()
