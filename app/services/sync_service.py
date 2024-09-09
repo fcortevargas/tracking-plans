@@ -54,6 +54,9 @@ class SyncService:
         # Step 4: Get all event properties in data catalog
         event_properties = self.rudderstack_service.get_all_properties()
 
+        print(f"Found {len(event_properties.get('data', []))} event properties")
+        print(f"Adding properties to the Event Properties database:\n {event_properties}")
+
         for prop in event_properties.get("data", []):
             name = prop["name"]
             description = prop.get("description", "")
