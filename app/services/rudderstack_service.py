@@ -42,3 +42,32 @@ class RudderStackService:
             return response.json()
         else:
             response.raise_for_status()
+
+    def get_all_properties(self) -> dict:
+        """Fetch all event properties from RudderStack, handling pagination."""
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        base_url = f"{self.base_url}/catalog/properties"
+        all_properties = []
+        page = 1
+        total_properties = 0
+
+        while True:
+            # Make the request with pagination
+            response = requests.get(
+                f"{base_url}?page={page}&orderBy=name:asc", headers=headers
+            )
+            if response.status_code == 200:
+                data = response.json()
+                properties = data.get("data", [])
+                all_properties.extend(properties)
+                total_properties = data.get("total", len(properties))
+
+                # Check if we've fetched all properties
+                if len(all_properties) >= total_properties:
+                    break
+                else:
+                    page += 1  # Move to the next page
+            else:
+                response.raise_for_status()
+
+        return {"data": all_properties, "total": total_properties}
